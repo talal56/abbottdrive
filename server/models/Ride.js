@@ -56,6 +56,9 @@ const rideSchema = new mongoose.Schema({
     otp: {
         type: String,
     },
+    acceptedAt: {
+        type: Date,
+    },
     allowSharing: {
         type: Boolean,
         default: false,
