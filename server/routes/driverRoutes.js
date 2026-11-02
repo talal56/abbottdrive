@@ -13,7 +13,7 @@ const roleMiddleware = require('../middleware/roleMiddleware')
 // DRIVER: go online or offline
 // PATCH /api/driver/status
 // Body to go online : { "isOnline": true, "coordinates": [73.2215, 34.1688] }
-// Body to go offline: { "isOnline": false }
+// Body to go offline:{ "isOnline": false }
 router.patch('/status', authMiddleware, roleMiddleware(['driver']), driverController.setStatus)
 
 module.exports = router
