@@ -132,14 +132,15 @@ const acceptRide = async (req, res) => {
 
         const driverId = req.user.id
 
-        // The driver must be verified by an admin, and have a verified vehicle
+        // The driver must be verified by an admin, and have an approved vehicle
         const driver = await User.findById(driverId)
         if (!driver || !driver.isDriverVerified) {
             return res.status(403).json({ error: 'Driver is not verified' })
         }
-        const vehicle = await Vehicle.findOne({ driver: driverId, verified: true })
+        // FIXED: was { driver: driverId, verified: true }, now we check the new status field
+        const vehicle = await Vehicle.findOne({ driver: driverId, status: 'approved' })
         if (!vehicle) {
-            return res.status(403).json({ error: 'No verified vehicle found' })
+            return res.status(403).json({ error: 'No approved vehicle found' }) // FIXED: message wording
         }
 
         const ride = await Ride.findById(req.params.id)
@@ -161,7 +162,7 @@ const acceptRide = async (req, res) => {
         const updated = await Ride.findOneAndUpdate(
             { _id: ride._id, status: 'requested' },
             { driver: driverId, vehicle: vehicle._id, status: 'accepted', otp, acceptedAt: new Date() },
-            { new: true }
+            { returnDocument: 'after' } // FIXED: "new: true" is deprecated
         )
         if (!updated) {
             return res.status(409).json({ error: 'This ride is no longer available' })
