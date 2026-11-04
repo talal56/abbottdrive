@@ -65,7 +65,7 @@ const findNearbyDrivers = async (pickupCoords, vehicleType) => {
 
     // 3) Keep only the candidates that pass the checks MongoDB could not do:
     //    - the driver was verified by an admin
-    //    - the vehicle was verified by an admin
+    //    - the vehicle was APPROVED by an admin
     //    - the vehicle is the type the rider asked for
     //    We use a normal loop (not .filter) so each step is easy to read.
     const matches = []
@@ -75,7 +75,7 @@ const findNearbyDrivers = async (pickupCoords, vehicleType) => {
         if (!status.driver || !status.vehicle) continue
 
         if (!status.driver.isDriverVerified) continue
-        if (!status.vehicle.verified) continue
+        if (status.vehicle.status !== 'approved') continue // FIXED: was !status.vehicle.verified
         if (status.vehicle.vehicleType !== vehicleType) continue
 
         matches.push({

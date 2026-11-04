@@ -67,10 +67,11 @@ const setStatus = async (req, res) => {
             return res.status(403).json({ error: 'Driver is not verified' })
         }
 
-        // 5) The driver must have a vehicle verified by an admin
-        const vehicle = await Vehicle.findOne({ driver: driverId, verified: true })
+        // 5) The driver must have a vehicle APPROVED by an admin
+        // FIXED: was { verified: true }, now we check the new status field
+        const vehicle = await Vehicle.findOne({ driver: driverId, status: 'approved' })
         if (!vehicle) {
-            return res.status(403).json({ error: 'No verified vehicle found' })
+            return res.status(403).json({ error: 'No approved vehicle found' }) // FIXED: message wording
         }
 
         // 6) Save the status. "upsert" means: update the record if it exists,
@@ -85,7 +86,8 @@ const setStatus = async (req, res) => {
                 vehicle: vehicle._id,
                 lastSeenAt: new Date(),
             },
-            { new: true, upsert: true, setDefaultsOnInsert: true }
+            // FIXED: "new: true" is deprecated, "returnDocument: 'after'" does the same job
+            { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true }
         )
 
         res.status(200).json({
