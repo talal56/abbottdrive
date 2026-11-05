@@ -67,11 +67,20 @@ const setStatus = async (req, res) => {
             return res.status(403).json({ error: 'Driver is not verified' })
         }
 
-        // 5) The driver must have a vehicle APPROVED by an admin
-        // FIXED: was { verified: true }, now we check the new status field
-        const vehicle = await Vehicle.findOne({ driver: driverId, status: 'approved' })
+        // 5) The driver must have an APPROVED vehicle that is allowed to work today.
+        // FIXED: we load ALL approved vehicles, then ask each one "canTakeRides()".
+        // That method (in Vehicle.js) also checks the registration deadline
+        // of "applied" vehicles, so the rule lives in one place only.
+        const approvedVehicles = await Vehicle.find({ driver: driverId, status: 'approved' })
+        if (approvedVehicles.length === 0) {
+            return res.status(403).json({ error: 'No approved vehicle found' })
+        }
+
+        // FIXED: pick the first approved vehicle that may work right now
+        const vehicle = approvedVehicles.find((v) => v.canTakeRides())
         if (!vehicle) {
-            return res.status(403).json({ error: 'No approved vehicle found' }) // FIXED: message wording
+            // The vehicle is approved, but the deadline for its plate number has passed
+            return res.status(403).json({ error: 'Your vehicle registration deadline has passed. Add your registration number to go online' })
         }
 
         // 6) Save the status. "upsert" means: update the record if it exists,
@@ -86,7 +95,6 @@ const setStatus = async (req, res) => {
                 vehicle: vehicle._id,
                 lastSeenAt: new Date(),
             },
-            // FIXED: "new: true" is deprecated, "returnDocument: 'after'" does the same job
             { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true }
         )
 

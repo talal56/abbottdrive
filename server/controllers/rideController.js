@@ -132,15 +132,25 @@ const acceptRide = async (req, res) => {
 
         const driverId = req.user.id
 
-        // The driver must be verified by an admin, and have an approved vehicle
+        // The driver must be verified by an admin
         const driver = await User.findById(driverId)
         if (!driver || !driver.isDriverVerified) {
             return res.status(403).json({ error: 'Driver is not verified' })
         }
-        // FIXED: was { driver: driverId, verified: true }, now we check the new status field
-        const vehicle = await Vehicle.findOne({ driver: driverId, status: 'approved' })
-        if (!vehicle) {
-            return res.status(403).json({ error: 'No approved vehicle found' }) // FIXED: message wording
+
+        // FIXED: load ALL approved vehicles of this driver (was findOne),
+        // because a driver may have more than one.
+        const approvedVehicles = await Vehicle.find({ driver: driverId, status: 'approved' })
+        if (approvedVehicles.length === 0) {
+            return res.status(403).json({ error: 'No approved vehicle found' })
+        }
+
+        // FIXED: keep only the vehicles allowed to work today.
+        // canTakeRides() (in Vehicle.js) also checks the registration
+        // deadline of "applied" vehicles, the same rule used everywhere else.
+        const workingVehicles = approvedVehicles.filter((v) => v.canTakeRides())
+        if (workingVehicles.length === 0) {
+            return res.status(403).json({ error: 'Your vehicle registration deadline has passed. Add your registration number to accept rides' })
         }
 
         const ride = await Ride.findById(req.params.id)
@@ -150,7 +160,10 @@ const acceptRide = async (req, res) => {
         if (ride.rider.toString() === driverId) {
             return res.status(400).json({ error: 'You cannot accept your own ride' })
         }
-        if (vehicle.vehicleType !== ride.vehicleTypeRequested) {
+
+        // FIXED: pick the working vehicle whose type matches the ride
+        const vehicle = workingVehicles.find((v) => v.vehicleType === ride.vehicleTypeRequested)
+        if (!vehicle) {
             return res.status(400).json({ error: 'Your vehicle type does not match this ride' })
         }
 
@@ -162,7 +175,7 @@ const acceptRide = async (req, res) => {
         const updated = await Ride.findOneAndUpdate(
             { _id: ride._id, status: 'requested' },
             { driver: driverId, vehicle: vehicle._id, status: 'accepted', otp, acceptedAt: new Date() },
-            { returnDocument: 'after' } // FIXED: "new: true" is deprecated
+            { returnDocument: 'after' }
         )
         if (!updated) {
             return res.status(409).json({ error: 'This ride is no longer available' })

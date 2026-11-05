@@ -5,7 +5,7 @@
 const mongoose = require('mongoose')
 
 // ---------------------------------------------------------------
-// NEW: one uploaded document (CNIC, license or registration proof).
+// One uploaded document (CNIC, license or registration proof).
 // The files are PRIVATE in Cloudinary, so we store the file's id (publicId),
 // not an open link. The admin gets a short-lived signed link from the server.
 // "_id: false" stops Mongoose adding a pointless id to each document.
@@ -41,7 +41,6 @@ const vehicleSchema = new mongoose.Schema({
         required: true,
     },
 
-    // NEW: is the vehicle fully registered, or is the registration still in process?
     // registered = has a plate number and the registration book or card
     // applied    = new vehicle, owner applied for registration, plate not issued yet
     registrationStatus: {
@@ -50,8 +49,8 @@ const vehicleSchema = new mongoose.Schema({
         required: true,
     },
 
-    // FIXED: was always required. Now it is required ONLY for registered vehicles,
-    // because a brand new vehicle may not have a plate yet.
+    // Required ONLY for registered vehicles, because a brand new vehicle
+    // may not have a plate yet.
     registrationNumber: {
         type: String,
         trim: true,
@@ -61,24 +60,36 @@ const vehicleSchema = new mongoose.Schema({
         },
     },
 
-    // NEW: for "applied" vehicles the admin sets a deadline when approving.
+    // For "applied" vehicles the admin sets a deadline when approving.
     // After this date the vehicle cannot take rides until the plate is added.
     registrationDeadline: {
         type: Date,
     },
 
-    // NEW: the three documents. The "registration" document is the registration
+    // The three documents. The "registration" document is the registration
     // book/card for a registered vehicle, or the dealer invoice / excise
     // application receipt for an applied vehicle.
-    // The upload rules are checked in vehicleController (so older test vehicles
-    // without documents can still be saved).
     documents: {
         cnic: { type: documentSchema },
         license: { type: documentSchema },
         registration: { type: documentSchema },
     },
 
-    // FIXED: replaces the old "verified: true/false" flag.
+    // NEW: the plate number and registration paper an "applied" vehicle's owner
+    // sent AFTER the plate was issued. They wait here until an admin approves.
+    // The vehicle keeps its normal status while this is under review.
+    pendingRegistration: {
+        registrationNumber: { type: String, trim: true, uppercase: true },
+        document: { type: documentSchema },
+        submittedAt: { type: Date },
+    },
+
+    // NEW: why the admin rejected the last plate submission, so the driver can fix it.
+    // Cleared when the driver submits again, or when the admin approves.
+    registrationRejectionReason: {
+        type: String,
+    },
+
     // pending  = driver submitted it, admin has not looked yet
     // approved = admin checked it, the vehicle may be used for rides
     // rejected = admin refused it (see rejectionReason)
@@ -88,12 +99,12 @@ const vehicleSchema = new mongoose.Schema({
         default: 'pending',
     },
 
-    // NEW: why the admin rejected it, so the driver can fix the problem
+    // Why the admin rejected the vehicle, so the driver can fix the problem
     rejectionReason: {
         type: String,
     },
 
-    // NEW: which admin made the decision, and when (an audit trail)
+    // Which admin made the decision, and when (an audit trail)
     verifiedBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
@@ -104,8 +115,8 @@ const vehicleSchema = new mongoose.Schema({
 }, { timestamps: true })
 
 // ---------------------------------------------------------------
-// NEW: ONE place that decides "may this vehicle take rides right now?"
-// driverController, matchingService and rideController will all call this,
+// ONE place that decides "may this vehicle take rides right now?"
+// driverController, matchingService and rideController all call this,
 // so the rule can never differ between files.
 //   1) the admin must have approved it
 //   2) a registered vehicle is fine
@@ -128,5 +139,8 @@ vehicleSchema.index({ status: 1 })
 
 // Looking up a vehicle by plate (used to warn about duplicates)
 vehicleSchema.index({ registrationNumber: 1 })
+
+// NEW: the admin's list of plate submissions waiting for review
+vehicleSchema.index({ 'pendingRegistration.submittedAt': 1 })
 
 module.exports = mongoose.model('Vehicle', vehicleSchema)

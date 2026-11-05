@@ -1,7 +1,7 @@
 // routes/vehicleRoutes.js
 // Connects vehicle URLs to the functions in vehicleController.
 // Routes only WIRE things together. The real work happens in the controller.
-// app.js will mount this file at /api/vehicles, so "/" below means "/api/vehicles".
+// app.js mounts this file at /api/vehicles, so "/" below means "/api/vehicles".
 
 const express = require('express')
 const router = express.Router()
@@ -28,5 +28,13 @@ router.post('/', authMiddleware, uploadVehicleDocuments, vehicleController.regis
 // ANY LOGGED-IN USER: list my own vehicles (to see "pending", "approved" or the rejection reason)
 // GET /api/vehicles/mine
 router.get('/mine', authMiddleware, vehicleController.getMyVehicles)
+
+// NEW. OWNER of an "applied" vehicle: send the plate number and registration paper
+// PATCH /api/vehicles/:id/registration
+// Body type: form-data
+//   Text field: registrationNumber
+//   File field: registration
+// The controller checks that the vehicle belongs to the logged-in user.
+router.patch('/:id/registration', authMiddleware, uploadVehicleDocuments, vehicleController.addRegistration)
 
 module.exports = router

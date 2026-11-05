@@ -61,11 +61,11 @@ const findNearbyDrivers = async (pickupCoords, vehicleType) => {
     })
         .limit(SEARCH_LIMIT)
         .populate('driver', 'name isDriverVerified') // never load the password or phone
-        .populate('vehicle')
+        .populate('vehicle') // the full vehicle document, so canTakeRides() is available
 
     // 3) Keep only the candidates that pass the checks MongoDB could not do:
     //    - the driver was verified by an admin
-    //    - the vehicle was APPROVED by an admin
+    //    - the vehicle is approved AND allowed to work today (canTakeRides)
     //    - the vehicle is the type the rider asked for
     //    We use a normal loop (not .filter) so each step is easy to read.
     const matches = []
@@ -75,7 +75,10 @@ const findNearbyDrivers = async (pickupCoords, vehicleType) => {
         if (!status.driver || !status.vehicle) continue
 
         if (!status.driver.isDriverVerified) continue
-        if (status.vehicle.status !== 'approved') continue // FIXED: was !status.vehicle.verified
+        // FIXED: was status.vehicle.status !== 'approved'.
+        // canTakeRides() checks the approval AND the registration deadline
+        // of "applied" vehicles, using the same rule as driverController.
+        if (!status.vehicle.canTakeRides()) continue
         if (status.vehicle.vehicleType !== vehicleType) continue
 
         matches.push({

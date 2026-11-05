@@ -3,6 +3,7 @@
 // The vehicle always starts as "pending". Only an ADMIN can approve it
 // (adminController), so this file never reads status from the request.
 
+const mongoose = require('mongoose') // NEW: used to check the vehicle id
 const Vehicle = require('../models/Vehicle')
 const uploadService = require('../services/uploadService')
 
@@ -34,6 +35,16 @@ const publicVehicle = (vehicle) => ({
         license: Boolean(vehicle.documents && vehicle.documents.license),
         registration: Boolean(vehicle.documents && vehicle.documents.registration),
     },
+    // NEW: a plate submission waiting for the admin (null when there is none).
+    // We show the plate and the date, never the file's id.
+    pendingRegistration: vehicle.pendingRegistration && vehicle.pendingRegistration.submittedAt
+        ? {
+            registrationNumber: vehicle.pendingRegistration.registrationNumber,
+            submittedAt: vehicle.pendingRegistration.submittedAt,
+        }
+        : null,
+    // NEW: why the admin refused the last plate submission
+    registrationRejectionReason: vehicle.registrationRejectionReason,
     createdAt: vehicle.createdAt,
 })
 
@@ -93,9 +104,13 @@ const registerVehicle = async (req, res) => {
 
             // The same plate cannot belong to two active vehicles.
             // A REJECTED vehicle does not count, so its owner can try again.
+            // FIXED: a plate that is waiting in another vehicle's pendingRegistration also counts.
             const duplicate = await Vehicle.findOne({
-                registrationNumber,
                 status: { $ne: 'rejected' },
+                $or: [
+                    { registrationNumber },
+                    { 'pendingRegistration.registrationNumber': registrationNumber },
+                ],
             })
             if (duplicate) {
                 return res.status(409).json({ error: 'This registration number is already registered' })
@@ -156,6 +171,124 @@ const registerVehicle = async (req, res) => {
 }
 
 // ---------------------------------------------------------------
+// NEW. OWNER of an "applied" vehicle: send the plate number and registration
+// paper once the plate has been issued.
+// PATCH /api/vehicles/:id/registration     (form-data)
+//   Text field: registrationNumber
+//   File field: registration  (the registration book or card)
+// The plate is NOT trusted yet. It goes into "pendingRegistration" and waits
+// for an admin. The vehicle keeps working until its deadline, so the driver is
+// not stopped while the admin reviews the paper.
+// ---------------------------------------------------------------
+const addRegistration = async (req, res) => {
+    // The new file, kept here so the "catch" below can delete it if something fails
+    let uploadedDoc = null
+
+    try {
+        const userId = req.user.id
+
+        if (!mongoose.isValidObjectId(req.params.id)) {
+            return res.status(400).json({ error: 'Invalid vehicle id' })
+        }
+
+        // 1) Find the vehicle, and make sure it belongs to THIS user.
+        //    A vehicle that is not theirs gets the same "not found" answer,
+        //    so nobody can find out which ids exist.
+        const vehicle = await Vehicle.findOne({ _id: req.params.id, driver: userId })
+        if (!vehicle) {
+            return res.status(404).json({ error: 'Vehicle not found' })
+        }
+
+        // 2) Only an APPROVED vehicle that is still "applied" may do this
+        if (vehicle.status !== 'approved') {
+            return res.status(409).json({ error: 'Your vehicle must be approved before you can add a registration number' })
+        }
+        if (vehicle.registrationStatus !== 'applied') {
+            return res.status(409).json({ error: 'This vehicle is already registered' })
+        }
+
+        // 3) Only one submission at a time
+        if (vehicle.pendingRegistration && vehicle.pendingRegistration.submittedAt) {
+            return res.status(409).json({ error: 'Your registration number is already waiting for review' })
+        }
+
+        // 4) Check the plate number (same rules as when registering)
+        const body = req.body || {}
+        const raw = typeof body.registrationNumber === 'string' ? body.registrationNumber : ''
+        const registrationNumber = raw.trim().toUpperCase().replace(/\s+/g, ' ')
+        if (!PLATE_PATTERN.test(registrationNumber)) {
+            return res.status(400).json({ error: 'Enter a valid registration number' })
+        }
+
+        // 5) The paper is required
+        const files = req.files || {}
+        if (!(files.registration && files.registration[0])) {
+            return res.status(400).json({ error: 'Missing document(s): registration' })
+        }
+
+        // 6) The plate must not belong to another active vehicle (or wait in another submission).
+        //    This vehicle itself is excluded, and rejected vehicles do not count.
+        const duplicate = await Vehicle.findOne({
+            _id: { $ne: vehicle._id },
+            status: { $ne: 'rejected' },
+            $or: [
+                { registrationNumber },
+                { 'pendingRegistration.registrationNumber': registrationNumber },
+            ],
+        })
+        if (duplicate) {
+            return res.status(409).json({ error: 'This registration number is already registered' })
+        }
+
+        // 7) Upload the paper to Cloudinary (private)
+        uploadedDoc = await uploadService.uploadDocument(
+            files.registration[0],
+            `abbottdrive/vehicle-docs/${userId}`
+        )
+
+        // 8) Save it in "pendingRegistration". One atomic update: it works only while the
+        //    vehicle is STILL approved, still "applied" and has no submission waiting.
+        //    Two quick taps cannot create two submissions.
+        const updated = await Vehicle.findOneAndUpdate(
+            {
+                _id: vehicle._id,
+                driver: userId,
+                status: 'approved',
+                registrationStatus: 'applied',
+                'pendingRegistration.submittedAt': { $exists: false },
+            },
+            {
+                $set: {
+                    pendingRegistration: {
+                        registrationNumber,
+                        document: uploadedDoc,
+                        submittedAt: new Date(),
+                    },
+                },
+                $unset: { registrationRejectionReason: '' }, // clear the old rejection reason
+            },
+            { returnDocument: 'after' }
+        )
+        if (!updated) {
+            // Someone else changed the vehicle a moment ago: delete the file we just uploaded
+            await uploadService.deleteDocument(uploadedDoc)
+            uploadedDoc = null
+            return res.status(409).json({ error: 'This vehicle could not be updated. Please try again' })
+        }
+
+        res.status(200).json({ vehicle: publicVehicle(updated) })
+    } catch (err) {
+        // If the file was uploaded but saving failed, delete the file
+        if (uploadedDoc) {
+            await uploadService.deleteDocument(uploadedDoc)
+        }
+
+        console.error('addRegistration error:', err) // details stay in the server log
+        res.status(500).json({ error: 'Failed to add registration number' })
+    }
+}
+
+// ---------------------------------------------------------------
 // ANY LOGGED-IN USER: list my own vehicles, newest first
 // ---------------------------------------------------------------
 const getMyVehicles = async (req, res) => {
@@ -168,4 +301,4 @@ const getMyVehicles = async (req, res) => {
     }
 }
 
-module.exports = { registerVehicle, getMyVehicles }
+module.exports = { registerVehicle, addRegistration, getMyVehicles }
