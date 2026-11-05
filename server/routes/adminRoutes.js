@@ -1,6 +1,6 @@
 // routes/adminRoutes.js
 // Connects admin URLs to the functions in adminController.
-// app.js will mount this file at /api/admin, so "/vehicles" below means "/api/admin/vehicles".
+// app.js mounts this file at /api/admin, so "/vehicles" below means "/api/admin/vehicles".
 
 const express = require('express')
 const router = express.Router()
@@ -16,7 +16,7 @@ const roleMiddleware = require('../middleware/roleMiddleware')
 router.use(authMiddleware)
 router.use(roleMiddleware(['admin']))
 
-// ADMIN: the review queue
+// ADMIN: the review queue for new vehicles
 // GET /api/admin/vehicles?status=pending      (also: approved, rejected)
 router.get('/vehicles', adminController.listVehicles)
 
@@ -31,5 +31,17 @@ router.patch('/vehicles/:id/approve', adminController.approveVehicle)
 // ADMIN: reject the vehicle with a reason the driver can read
 // PATCH /api/admin/vehicles/:id/reject       Body: { "reason": "CNIC photo is blurry" }
 router.patch('/vehicles/:id/reject', adminController.rejectVehicle)
+
+// NEW. ADMIN: the queue of plate submissions waiting for review
+// GET /api/admin/registrations
+router.get('/registrations', adminController.listRegistrations)
+
+// NEW. ADMIN: approve a plate submission (vehicle becomes "registered")
+// PATCH /api/admin/vehicles/:id/registration/approve
+router.patch('/vehicles/:id/registration/approve', adminController.approveRegistration)
+
+// NEW. ADMIN: reject a plate submission with a reason
+// PATCH /api/admin/vehicles/:id/registration/reject      Body: { "reason": "Plate does not match the paper" }
+router.patch('/vehicles/:id/registration/reject', adminController.rejectRegistration)
 
 module.exports = router
