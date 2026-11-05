@@ -1,0 +1,18 @@
+$kind: http-request
+description: ""
+url: "{{baseUrl}}/api/auth/signup"
+method: POST
+body:
+  type: json
+  content: "{\r
+
+    \  \"name\": \"Test Hacker\",\r
+
+    \  \"phone\": \"03221234567\",\r
+
+    \  \"password\": \"password123\",\r
+
+    \  \"roles\": [\"admin\"]\r
+
+    }"
+order: 4000

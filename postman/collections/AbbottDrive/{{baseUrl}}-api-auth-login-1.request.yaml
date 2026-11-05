@@ -1,0 +1,11 @@
+$kind: http-request
+name: "{{baseUrl}}/api/auth/login"
+description: ""
+url: "{{baseUrl}}/api/auth/login"
+method: POST
+body:
+  type: json
+  content: '   { "phone": "03007654322", "password": "password123" }'
+auth:
+  type: noauth
+order: 6000

@@ -1,0 +1,56 @@
+$kind: http-request
+name: "{{baseUrl}}/api/vehicles"
+description: ""
+url: "{{baseUrl}}/api/vehicles"
+method: POST
+body:
+  type: formdata
+  content:
+    - type: text
+      key: model
+      value: Honda CD 70
+      description: ""
+      disabled: false
+    - type: text
+      key: fuelType
+      value: petrol
+      description: ""
+      disabled: false
+    - type: text
+      key: vehicleType
+      value: bike
+      description: ""
+      disabled: false
+    - type: text
+      key: registrationStatus
+      value: registered
+      description: ""
+      disabled: false
+    - type: text
+      key: registrationNumber
+      value: ABC-1234
+      description: ""
+      disabled: false
+    - type: file
+      key: cnic
+      src:
+        - /D:/Personal Info/aeroplane/IMG-20251203-WA0011.jpg
+      description: ""
+      disabled: false
+    - type: file
+      key: license
+      src:
+        - /D:/Personal Info/aeroplane/IMG-20251203-WA0015.jpg
+      description: ""
+      disabled: false
+    - type: file
+      key: registration
+      src:
+        - /D:/Personal Info/aeroplane/IMG-20251203-WA0018.jpg
+      description: ""
+      disabled: false
+auth:
+  type: bearer
+  credentials:
+    token: "{{json_web_token_1c9z}}"
+order: 18000

@@ -1,0 +1,9 @@
+$kind: http-request
+name: "{{baseUrl}}/api/auth/signup"
+description: ""
+url: "{{baseUrl}}/api/auth/signup"
+method: POST
+body:
+  type: json
+  content: '{ "name": "Applicant One", "phone": "03111234567", "password": "password123" }'
+order: 19000

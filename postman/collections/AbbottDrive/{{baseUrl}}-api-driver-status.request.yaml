@@ -1,0 +1,13 @@
+$kind: http-request
+name: "{{baseUrl}}/api/driver/status"
+description: ""
+url: "{{baseUrl}}/api/driver/status"
+method: PATCH
+body:
+  type: json
+  content: '{ "isOnline": true, "coordinates": [73.2215, 34.1688] }'
+auth:
+  type: bearer
+  credentials:
+    token: "{{json_web_token_154f}}"
+order: 7000

@@ -1,0 +1,23 @@
+$kind: http-request
+name: "{{baseUrl}}/api/auth/signup"
+description: ""
+url: "{{baseUrl}}/api/auth/signup"
+method: POST
+body:
+  type: json
+  content: "{\r
+
+    \  \"name\": \"Test Rider\",\r
+
+    \  \"phone\": \"03001234567\",\r
+
+    \  \"password\": \"password123\"\r
+
+    }"
+scripts:
+  - type: afterResponse
+    code: "// Save the login token so the next requests can use {{riderToken}}\r
+
+      pm.environment.set(\"riderToken\", pm.response.json().token)"
+    language: text/javascript
+order: 2000

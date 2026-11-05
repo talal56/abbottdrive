@@ -1,0 +1,10 @@
+$kind: http-request
+name: "{{baseUrl}}/api/admin/vehicles/6aec0edb4ab3b31c3f209251"
+description: ""
+url: "{{baseUrl}}/api/admin/vehicles/6aec0edb4ab3b31c3f209251"
+method: GET
+auth:
+  type: bearer
+  credentials:
+    token: "{{json_web_token_135a}}"
+order: 14000

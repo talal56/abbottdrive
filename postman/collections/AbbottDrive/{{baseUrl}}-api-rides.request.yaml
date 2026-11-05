@@ -1,0 +1,21 @@
+$kind: http-request
+name: "{{baseUrl}}/api/rides"
+description: ""
+url: "{{baseUrl}}/api/rides"
+method: POST
+body:
+  type: json
+  content: "{\r
+
+    \  \"pickupLocation\": { \"address\": \"Supply Bazaar\", \"coordinates\": [73.2215, 34.1688] },\r
+
+    \  \"dropLocation\": { \"address\": \"COMSATS Abbottabad\", \"coordinates\": [73.2400, 34.1700] },\r
+
+    \  \"vehicleTypeRequested\": \"car\"\r
+
+    }"
+auth:
+  type: bearer
+  credentials:
+    token: "{{json_web_token_0try}}"
+order: 8000

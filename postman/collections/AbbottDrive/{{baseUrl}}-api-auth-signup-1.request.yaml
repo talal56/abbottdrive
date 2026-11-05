@@ -1,0 +1,25 @@
+$kind: http-request
+name: "{{baseUrl}}/api/auth/signup"
+description: ""
+url: "{{baseUrl}}/api/auth/signup"
+method: POST
+body:
+  type: json
+  content: "{ \"name\": \"Test Driver\", \"phone\": \"03007654322\", \"password\": \"password123\" }\r
+
+    {\r
+
+    \  \"driver\": { \"$oid\": \"6ae5fbb894438a36db93e4c8\" },\r
+
+    \  \"model\": \"Suzuki Alto\",\r
+
+    \  \"fuelType\": \"petrol\",\r
+
+    \  \"vehicleType\": \"car\",\r
+
+    \  \"registrationNumber\": \"ABC-123\",\r
+
+    \  \"verified\": true\r
+
+    }"
+order: 5000

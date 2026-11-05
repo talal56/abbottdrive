@@ -1,0 +1,13 @@
+$kind: http-request
+name: "{{baseUrl}}/api/rides/6ae892c337819ab6ac20bf85/accept"
+description: ""
+url: "{{baseUrl}}/api/rides/6ae892c337819ab6ac20bf85/accept"
+method: PATCH
+body:
+  type: json
+  content: ""
+auth:
+  type: bearer
+  credentials:
+    token: "{{json_web_token_154f}}"
+order: 9000

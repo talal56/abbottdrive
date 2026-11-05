@@ -1,0 +1,13 @@
+$kind: http-request
+name: "{{baseUrl}}/api/rides/6ae892c337819ab6ac20bf85/status"
+description: ""
+url: "{{baseUrl}}/api/rides/6ae892c337819ab6ac20bf85/status"
+method: PATCH
+body:
+  type: json
+  content: "  { \"status\": \"completed\" }\r\n  "
+auth:
+  type: bearer
+  credentials:
+    token: "{{json_web_token_0o1n}}"
+order: 11000

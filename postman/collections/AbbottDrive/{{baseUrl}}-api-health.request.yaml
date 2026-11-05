@@ -1,0 +1,18 @@
+$kind: http-request
+name: "{{baseUrl}}/api/health"
+description: ""
+url: "{{baseUrl}}/api/health"
+method: GET
+auth:
+  type: bearer
+  credentials:
+    token: "{{riderToken}}"
+scripts:
+  - type: afterResponse
+    code: "// After the response arrives, save the login token in the environment\r
+
+      // so we never have to copy and paste it by hand.\r
+
+      pm.environment.set(\"riderToken\", pm.response.json().token)"
+    language: text/javascript
+order: 1000

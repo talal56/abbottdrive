@@ -7,6 +7,8 @@ const { generalApiLimiter } = require('./middleware/rateLimiter')
 const authRoutes = require('./routes/authRoutes')
 const rideRoutes = require('./routes/rideRoutes')
 const driverRoutes = require('./routes/driverRoutes')
+const vehicleRoutes = require('./routes/vehicleRoutes') // NEW
+const adminRoutes = require('./routes/adminRoutes')     // NEW
 
 const app = express()
 
@@ -19,9 +21,11 @@ app.use('/api', generalApiLimiter)
 // A simple check that the server is alive: open /api/health in the browser
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }))
 
-app.use('/api/auth', authRoutes)     // signup, login
-app.use('/api/rides', rideRoutes)    // rider + driver ride actions
-app.use('/api/driver', driverRoutes) // driver online/offline
+app.use('/api/auth', authRoutes)         // signup, login
+app.use('/api/rides', rideRoutes)        // rider + driver ride actions
+app.use('/api/driver', driverRoutes)     // driver online/offline
+app.use('/api/vehicles', vehicleRoutes)  // NEW: register a vehicle, list my vehicles
+app.use('/api/admin', adminRoutes)       // NEW: admin reviews and approves vehicles
 
 connectDB()
 
