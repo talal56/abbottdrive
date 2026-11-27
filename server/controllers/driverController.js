@@ -111,4 +111,71 @@ const setStatus = async (req, res) => {
     }
 }
 
-module.exports = { setStatus }
+// ---------------------------------------------------------------
+// NEW. DRIVER: send the current location over plain HTTP.
+// POST /api/driver/location
+// Body: { "coordinates": [longitude, latitude] }
+//
+// This is the BACKUP for the socket event driver:location. When the phone
+// screen is off, sockets are unreliable, so the background task in the app
+// sends the location here instead. The rules are the same as the socket
+// version in sockets/driverSocket.js:
+//   - the driver must be verified (checked in MongoDB, not only in the token)
+//   - the driver must be online (checked inside the update itself)
+//   - the location comes from the body; the ride id never does
+// ---------------------------------------------------------------
+const updateLocation = async (req, res) => {
+    try {
+        const driverId = req.user.id
+        // locationValidation already checked the shape and range of coordinates
+        const { coordinates } = req.body
+
+        // 1) Is this driver really verified by an admin? The token can be up to
+        //    15 minutes old, so we ask MongoDB (known issues 12 and 13).
+        const driver = await User.findById(driverId).select('isDriverVerified')
+        if (!driver || !driver.isDriverVerified) {
+            return res.status(403).json({ error: 'Driver is not verified' })
+        }
+
+        // 2) Save the location, but ONLY if the driver is online.
+        //    The filter { isOnline: true } and the update are one atomic step.
+        //    An offline driver matches nothing and we get null.
+        const status = await DriverStatus.findOneAndUpdate(
+            { driver: driverId, isOnline: true },
+            {
+                $set: {
+                    location: { type: 'Point', coordinates: [coordinates[0], coordinates[1]] },
+                    lastSeenAt: new Date(),
+                },
+            },
+            { returnDocument: 'after' }
+        )
+        if (!status) {
+            return res.status(409).json({ error: 'Go online first (PATCH /api/driver/status)' })
+        }
+
+        // 3) If the driver is on a ride, pass the location to the ride room,
+        //    exactly like the socket version does. The ride id comes from OUR
+        //    database (status.currentRide), never from the request.
+        //    A socket problem must never turn a saved location into an error.
+        const io = req.app.get('io')
+        if (io && status.currentRide) {
+            try {
+                io.to(`ride:${status.currentRide}`).emit('driver:location', {
+                    rideId: status.currentRide,
+                    coordinates: status.location.coordinates,
+                    at: new Date().toISOString(),
+                })
+            } catch (emitErr) {
+                console.error('updateLocation emit error:', emitErr.message)
+            }
+        }
+
+        res.status(200).json({ ok: true })
+    } catch (err) {
+        console.error('updateLocation error:', err)
+        res.status(500).json({ error: 'Failed to update location' })
+    }
+}
+
+module.exports = { setStatus, updateLocation } // NEW: updateLocation added

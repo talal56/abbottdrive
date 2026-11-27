@@ -30,6 +30,84 @@ const isValidPoint = (loc) => {
 }
 
 // ---------------------------------------------------------------
+// NEW. Real-time helpers. The database change is ALREADY saved when we
+// call them, so a socket problem must never turn a good request into an
+// error. That is why each one has its own try/catch and never throws.
+// "io" is the Socket.io server (req.app.get('io'), set in app.js, step 7).
+// Room names: ride:<id> (rider + driver of one ride), user:<id> (one person).
+// ---------------------------------------------------------------
+const rideRoom = (rideId) => `ride:${rideId}`
+
+// A driver won the ride. Tell everyone who needs to know.
+const announceAccepted = async (io, ride, vehicle, driverId) => {
+    try {
+        const room = rideRoom(ride._id)
+
+        // 1) Stop the countdown and tell the other drivers "ride taken"
+        matchingService.closeOffers(io, ride._id.toString(), 'taken', driverId)
+
+        // 2) Put the rider's and the driver's sockets in the ride room, so
+        //    ride:status and driver:location reach them without waiting for
+        //    ride:join (helps on weak networks). ride:join is still used after a reconnect.
+        io.in(`user:${ride.rider}`).socketsJoin(room)
+        io.in(`user:${driverId}`).socketsJoin(room)
+
+        // 3) Tell the rider. The OTP goes ONLY here, to the rider's own room.
+        //    We pick the fields one by one: no driver phone, no internal lists.
+        const driver = await User.findById(driverId).select('name')
+        io.to(`user:${ride.rider}`).emit('ride:accepted', {
+            ride: {
+                id: ride._id,
+                status: ride.status,
+                otp: ride.otp,
+                pickupLocation: ride.pickupLocation,
+                dropLocation: ride.dropLocation,
+                vehicleTypeRequested: ride.vehicleTypeRequested,
+                distanceKm: ride.distanceKm,
+                estimatedDurationMin: ride.estimatedDurationMin,
+                fareRangeMin: ride.fareRangeMin,
+                fareRangeMax: ride.fareRangeMax,
+                acceptedAt: ride.acceptedAt,
+            },
+            driver: { id: driverId, name: driver ? driver.name : null },
+            vehicle: {
+                model: vehicle.model,
+                vehicleType: vehicle.vehicleType,
+                registrationNumber: vehicle.registrationNumber, // empty for "applied" vehicles
+            },
+        })
+
+        // 4) Status event for the ride room
+        io.to(room).emit('ride:status', {
+            rideId: ride._id,
+            status: ride.status,
+            at: new Date().toISOString(),
+        })
+    } catch (err) {
+        console.error('announceAccepted error:', err.message)
+    }
+}
+
+// The status changed (arriving, in-progress, completed, cancelled).
+// When the ride is over, everyone leaves the room.
+const announceStatus = (io, ride, extra = {}) => {
+    try {
+        const room = rideRoom(ride._id)
+        io.to(room).emit('ride:status', {
+            rideId: ride._id,
+            status: ride.status,
+            at: new Date().toISOString(),
+            ...extra,
+        })
+        if (ride.status === 'completed' || ride.status === 'cancelled') {
+            io.in(room).socketsLeave(room)
+        }
+    } catch (err) {
+        console.error('announceStatus error:', err.message)
+    }
+}
+
+// ---------------------------------------------------------------
 // RIDER: request a ride
 // ---------------------------------------------------------------
 const createRide = async (req, res) => {
@@ -67,11 +145,28 @@ const createRide = async (req, res) => {
             status: 'requested',
         })
 
-        // 4) Find nearby drivers (later we will notify them in real time)
-        const nearbyDrivers = await matchingService.findNearbyDrivers(
-            pickupLocation.coordinates,
-            vehicleTypeRequested
-        )
+        // 4) FIXED: was only a list of nearby drivers. Now we OFFER the ride:
+        //    ride:request goes to the nearest 3 drivers with a countdown
+        //    (see matchingService.startDispatch).
+        //    nearbyDrivers is now the list of drivers who got the first offer.
+        let nearbyDrivers = []
+        const io = req.app.get('io') // NEW: the Socket.io server (set in app.js, step 7)
+
+        if (io) {
+            try {
+                nearbyDrivers = await matchingService.startDispatch(io, newRide)
+            } catch (dispatchErr) {
+                // The ride IS saved, so we do not answer with an error.
+                // [TO CONFIRM] a ride whose dispatch failed stays "requested".
+                console.error('startDispatch error:', dispatchErr)
+            }
+        } else {
+            // NEW: no socket server yet (before step 7): behave like before
+            nearbyDrivers = await matchingService.findNearbyDrivers(
+                pickupLocation.coordinates,
+                vehicleTypeRequested
+            )
+        }
 
         res.status(201).json({ ride: newRide, fareEstimate, nearbyDrivers })
     } catch (err) {
@@ -153,12 +248,23 @@ const acceptRide = async (req, res) => {
             return res.status(403).json({ error: 'Your vehicle registration deadline has passed. Add your registration number to accept rides' })
         }
 
-        const ride = await Ride.findById(req.params.id)
+        // FIXED: also load "declinedBy". It is hidden from normal queries
+        // (select: false in Ride.js), so we ask for it on purpose with "+declinedBy".
+        const ride = await Ride.findById(req.params.id).select('+declinedBy')
         if (!ride) {
             return res.status(404).json({ error: 'Ride not found' })
         }
         if (ride.rider.toString() === driverId) {
             return res.status(400).json({ error: 'You cannot accept your own ride' })
+        }
+
+        // NEW: a driver who already had their turn (declined, or the countdown
+        // ran out) can no longer accept this ride. The list is in the DATABASE,
+        // so this check still works after a server restart.
+        // The "|| []" protects rides created before the field existed.
+        const alreadyHadTurn = (ride.declinedBy || []).some((id) => id.toString() === driverId)
+        if (alreadyHadTurn) {
+            return res.status(409).json({ error: 'This ride is no longer available' })
         }
 
         // FIXED: pick the working vehicle whose type matches the ride
@@ -172,6 +278,8 @@ const acceptRide = async (req, res) => {
 
         // One atomic update: it only works if the ride is STILL "requested".
         // If two drivers tap accept together, only the first one succeeds.
+        // (UNCHANGED: the timeout in matchingService uses the same rule,
+        // so a late accept and a timeout can never both win.)
         const updated = await Ride.findOneAndUpdate(
             { _id: ride._id, status: 'requested' },
             { driver: driverId, vehicle: vehicle._id, status: 'accepted', otp, acceptedAt: new Date() },
@@ -183,6 +291,14 @@ const acceptRide = async (req, res) => {
 
         // Mark the driver as busy so they are not matched to other rides
         await DriverStatus.findOneAndUpdate({ driver: driverId }, { currentRide: updated._id })
+
+        // NEW: real-time. Tell the rider (ride:accepted, ride:status), join both
+        // to the ride room, and tell the other drivers the ride is taken.
+        // announceAccepted never throws, so the accept always succeeds.
+        const io = req.app.get('io')
+        if (io) {
+            await announceAccepted(io, updated, vehicle, driverId)
+        }
 
         const data = updated.toObject()
         delete data.otp // the driver does not get the OTP
@@ -233,6 +349,13 @@ const updateRideStatus = async (req, res) => {
 
         await ride.save()
 
+        // NEW: real-time. Everyone in the ride room gets ride:status.
+        // The OTP is never part of this event.
+        const io = req.app.get('io')
+        if (io) {
+            announceStatus(io, ride)
+        }
+
         const data = ride.toObject()
         delete data.otp
         res.status(200).json({ ride: data })
@@ -269,6 +392,9 @@ const cancelRide = async (req, res) => {
             return res.status(400).json({ error: `A ${ride.status} ride cannot be cancelled` })
         }
 
+        // NEW: remember if nobody had accepted yet (drivers may still be holding the request)
+        const wasRequested = ride.status === 'requested'
+
         // Fee rule: only the RIDER pays, only after a driver accepted,
         // and only after the 2-minute grace period has passed.
         let fee = 0
@@ -285,6 +411,21 @@ const cancelRide = async (req, res) => {
         ride.cancelledBy = isRider ? 'rider' : 'driver'
         ride.cancellationFee = fee
         await ride.save()
+
+        // NEW: real-time
+        const io = req.app.get('io')
+        if (io) {
+            try {
+                // Nobody accepted yet: stop the countdown, tell the drivers who hold the request
+                if (wasRequested) {
+                    matchingService.closeOffers(io, ride._id.toString(), 'cancelled')
+                }
+            } catch (offerErr) {
+                console.error('closeOffers error:', offerErr.message)
+            }
+            // Tell the ride room (the other person) and close the room
+            announceStatus(io, ride, { cancelledBy: ride.cancelledBy })
+        }
 
         const data = ride.toObject()
         if (!isRider) delete data.otp

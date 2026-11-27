@@ -1,3 +1,4 @@
+// models/Ride.js
 const mongoose = require('mongoose')
 
 const rideSchema = new mongoose.Schema({
@@ -87,7 +88,19 @@ const rideSchema = new mongoose.Schema({
     cancellationFee: {
         type: Number,
         default: 0,
-    }
+    },
+
+    // NEW: drivers who already had their turn for this ride. A driver lands here
+    // when they decline OR when the countdown runs out without an answer.
+    // Matching skips these drivers, so nobody is offered the same ride twice.
+    // select: false means normal queries do NOT return this list, so riders
+    // and drivers never see other drivers' ids. To read it we must ask on
+    // purpose: .select('+declinedBy') (matchingService does that).
+    declinedBy: {
+        type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+        default: [],
+        select: false,
+    },
 }, { timestamps: true })
 
 rideSchema.index({ 'pickupLocation.coordinates': '2dsphere' })

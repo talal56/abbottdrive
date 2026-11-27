@@ -55,7 +55,7 @@ const initSockets = (server) => {
         //    Step 4: remove the // in front of the driverSocket line
         //    Step 5: remove the // in front of the rideSocket line
         require('./driverSocket')(io, socket)
-        // require('./rideSocket')(io, socket)
+        require('./rideSocket')(io, socket)
 
         // 6) A broken connection or a bad message must never crash the server.
         //    Socket.io emits "error" on the socket, and an unhandled one can
