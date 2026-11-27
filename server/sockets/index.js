@@ -54,7 +54,7 @@ const initSockets = (server) => {
         //    NEW: these two files do not exist yet.
         //    Step 4: remove the // in front of the driverSocket line
         //    Step 5: remove the // in front of the rideSocket line
-        // require('./driverSocket')(io, socket)
+        require('./driverSocket')(io, socket)
         // require('./rideSocket')(io, socket)
 
         // 6) A broken connection or a bad message must never crash the server.
